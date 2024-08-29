@@ -9,7 +9,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.ImageButton
+import android.widget.ListView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -19,8 +22,14 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
-class MainActivity : AppCompatActivity() {
+import com.google.gson.Gson
 
+
+
+class MainActivity : AppCompatActivity() {
+    private lateinit var notificationHistory: MutableList<NotificationItem>
+    private lateinit var listView: ListView
+    private lateinit var adapter: ArrayAdapter<NotificationItem>
     override fun onCreate(savedInstanceState: Bundle?) {
 
         super.onCreate(savedInstanceState)
@@ -32,6 +41,15 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
+
+        // Initialize the notification history
+        notificationHistory = loadNotificationHistory()
+
+        // Set up the ListView and its adapter
+        listView = findViewById(R.id.listNotfi)
+        adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, notificationHistory)
+        listView.adapter = adapter
+
         createNotificationChannel(this)
 
 
@@ -40,6 +58,14 @@ class MainActivity : AppCompatActivity() {
         btnlocal.setOnClickListener {
             showNotification(this)
         }
+
+        val settings = findViewById<ImageButton>(R.id.btnSettings)
+
+        settings.setOnClickListener {
+            val intent = Intent(this, Settings::class.java)
+            startActivity(intent)
+        }
+
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -65,24 +91,53 @@ class MainActivity : AppCompatActivity() {
 
     }
     fun showNotification(context: Context) {
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent: PendingIntent = PendingIntent.getActivity(context, 0, intent,
-            PendingIntent.FLAG_IMMUTABLE)
+        val sharedPreferences = context.getSharedPreferences("AppSettings", Context.MODE_PRIVATE)
+        val notificationsEnabled = sharedPreferences.getBoolean("Notifications", true)
 
-        val notificationId = 1
-        val builder = NotificationCompat.Builder(context, "your_channel_id")
-            .setSmallIcon(R.drawable.baseline_star_24)
-            .setContentTitle("Your Notification Title")
-            .setContentText("Your notification message.")
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
+        if (notificationsEnabled) {
+            val title = "Your Notification Title"
+            val message = "Your notification message."
+            val timestamp = System.currentTimeMillis()
 
-        with(NotificationManagerCompat.from(context)) {
-            notify(notificationId, builder.build())
+            // Create and display the notification
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            val pendingIntent: PendingIntent = PendingIntent.getActivity(
+                context, 0, intent, PendingIntent.FLAG_IMMUTABLE
+            )
+            val notificationId = 1
+            val builder = NotificationCompat.Builder(context, "your_channel_id")
+                .setSmallIcon(R.drawable.baseline_star_24)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+
+            with(NotificationManagerCompat.from(context)) {
+                notify(notificationId, builder.build())
+            }
+
+            // Add the notification to the history, update the ListView, and save it
+            notificationHistory.add(NotificationItem(title, message, timestamp))
+            adapter.notifyDataSetChanged()  // Notify the adapter to refresh the ListView
+            saveNotificationHistory(notificationHistory)
         }
     }
 
+    private fun loadNotificationHistory(): MutableList<NotificationItem> {
+        val sharedPreferences = getSharedPreferences("AppSettings", MODE_PRIVATE)
+        val json = sharedPreferences.getString("NotificationHistory", "[]")
+        val type = object : com.google.gson.reflect.TypeToken<MutableList<NotificationItem>>() {}.type
+        return Gson().fromJson(json, type)
+    }
+
+    private fun saveNotificationHistory(history: List<NotificationItem>) {
+        val sharedPreferences = getSharedPreferences("AppSettings", MODE_PRIVATE)
+        val editor = sharedPreferences.edit()
+        val json = Gson().toJson(history)
+        editor.putString("NotificationHistory", json)
+        editor.apply()
+    }
 }
